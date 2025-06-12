@@ -1,0 +1,190 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  password        String    // Hashed with bcrypt
+  name            String?
+  role            UserRole  @default(USER)
+  isActive        Boolean   @default(true)
+  emailVerified   Boolean   @default(false)
+  
+  // Security fields
+  loginAttempts   Int       @default(0)
+  lockedUntil     DateTime?
+  lastLoginAt     DateTime?
+  lastLoginIp     String?
+  
+  // Tokens
+  refreshTokens   RefreshToken[]
+  passwordResets  PasswordReset[]
+  
+  // Relations
+  orders          Order[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([email])
+  @@index([role])
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  token       String    @unique @db.VarChar(500)
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Security
+  deviceInfo  String?   // Pour identifier l'appareil
+  ipAddress   String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  
+  createdAt   DateTime  @default(now())
+  
+  @@index([token])
+  @@index([userId])
+}
+
+model PasswordReset {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  expiresAt   DateTime
+  usedAt      DateTime?
+  
+  createdAt   DateTime  @default(now())
+  
+  @@index([token])
+  @@index([userId])
+}
+
+model Product {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?   @db.Text
+  price       Decimal   @db.Decimal(10, 2)
+  stock       Int       @default(0)
+  category    String?
+  imageUrl    String?
+  
+  // Security - prevent mass assignment
+  isActive    Boolean   @default(true)
+  
+  orderItems  OrderItem[]
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([category])
+  @@index([isActive])
+}
+
+model Order {
+  id            Int         @id @default(autoincrement())
+  orderNumber   String      @unique @default(uuid())
+  phoneNumber   String
+  userId        Int?
+  user          User?       @relation(fields: [userId], references: [id])
+  
+  total         Decimal     @db.Decimal(10, 2)
+  status        OrderStatus @default(PENDING)
+  
+  // Security - audit trail
+  statusHistory Json        @default("[]")
+  ipAddress     String?
+  userAgent     String?
+  
+  items         OrderItem[]
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  @@index([phoneNumber])
+  @@index([userId])
+  @@index([status])
+  @@index([orderNumber])
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id])
+  
+  quantity  Int
+  price     Decimal  @db.Decimal(10, 2)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Message {
+  id          Int      @id @default(autoincrement())
+  phoneNumber String
+  message     String   @db.Text
+  messageType String
+  status      String
+  
+  // Security - store metadata safely
+  metadata    Json     @default("{}")
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([phoneNumber])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  action      String
+  entityType  String
+  entityId    String
+  
+  // Security audit
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json     @default("{}")
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  USER
+  MODERATOR
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}

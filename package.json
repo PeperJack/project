@@ -1,0 +1,39 @@
+{
+  "name": "whatsapp-commerce-mena",
+  "version": "1.0.0",
+  "description": "Plateforme e-commerce WhatsApp pour la région MENA avec support RTL",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start"
+  },
+  "keywords": [
+    "whatsapp",
+    "ecommerce",
+    "mena",
+    "morocco",
+    "arabic",
+    "rtl"
+  ],
+  "author": "MutedByTinnitus",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.9",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "express-rate-limit": "^7.5.0",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
