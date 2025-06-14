@@ -1,190 +1,145 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
+// Modèle User pour l'authentification
 model User {
-  id              Int       @id @default(autoincrement())
-  email           String    @unique
-  password        String    // Hashed with bcrypt
-  name            String?
-  role            UserRole  @default(USER)
-  isActive        Boolean   @default(true)
-  emailVerified   Boolean   @default(false)
-  
-  // Security fields
-  loginAttempts   Int       @default(0)
-  lockedUntil     DateTime?
-  lastLoginAt     DateTime?
-  lastLoginIp     String?
-  
-  // Tokens
-  refreshTokens   RefreshToken[]
-  passwordResets  PasswordReset[]
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  password      String
+  name          String
+  role          String    @default("USER") // ADMIN, MANAGER, SUPPORT, USER
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   
   // Relations
-  orders          Order[]
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
-  @@index([email])
-  @@index([role])
+  orders        Order[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
 }
 
+// Modèle RefreshToken
 model RefreshToken {
-  id          String    @id @default(uuid())
-  token       String    @unique @db.VarChar(500)
-  userId      Int
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Security
-  deviceInfo  String?   // Pour identifier l'appareil
-  ipAddress   String?
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  
-  createdAt   DateTime  @default(now())
-  
-  @@index([token])
-  @@index([userId])
+  id         String    @id @default(uuid())
+  token      String    @unique
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id])
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  ipAddress  String?
+  deviceInfo String?
 }
 
-model PasswordReset {
-  id          String    @id @default(uuid())
-  token       String    @unique
-  userId      Int
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  expiresAt   DateTime
-  usedAt      DateTime?
-  
-  createdAt   DateTime  @default(now())
-  
-  @@index([token])
-  @@index([userId])
+// Modèle AuditLog pour la traçabilité
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String?
+  entityId   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   String?  // JSON stocké comme string en SQLite
+  createdAt  DateTime @default(now())
 }
 
+// Modèle Customer (clients WhatsApp)
+model Customer {
+  id                String    @id @default(uuid())
+  whatsappId        String    @unique
+  phoneNumber       String    @unique
+  name              String
+  email             String?
+  city              String?
+  address           String?
+  preferredLanguage String    @default("fr") // fr, ar, en
+  isBlocked         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  orders            Order[]
+  messages          Message[]
+}
+
+// Modèle Product
 model Product {
-  id          Int       @id @default(autoincrement())
-  name        String
-  description String?   @db.Text
-  price       Decimal   @db.Decimal(10, 2)
-  stock       Int       @default(0)
-  category    String?
-  imageUrl    String?
-  
-  // Security - prevent mass assignment
-  isActive    Boolean   @default(true)
-  
-  orderItems  OrderItem[]
-  
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
-  @@index([category])
-  @@index([isActive])
-}
-
-model Order {
   id            Int         @id @default(autoincrement())
-  orderNumber   String      @unique @default(uuid())
-  phoneNumber   String
-  userId        Int?
-  user          User?       @relation(fields: [userId], references: [id])
-  
-  total         Decimal     @db.Decimal(10, 2)
-  status        OrderStatus @default(PENDING)
-  
-  // Security - audit trail
-  statusHistory Json        @default("[]")
-  ipAddress     String?
-  userAgent     String?
-  
-  items         OrderItem[]
-  
+  name          String
+  nameFr        String
+  nameAr        String
+  description   String?
+  descriptionFr String?
+  descriptionAr String?
+  price         Float
+  stock         Int         @default(0)
+  category      String?
+  imageUrl      String?
+  isActive      Boolean     @default(true)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   
-  @@index([phoneNumber])
-  @@index([userId])
-  @@index([status])
-  @@index([orderNumber])
+  // Relations
+  orderItems    OrderItem[]
 }
 
+// Modèle Order
+model Order {
+  id              String      @id @default(uuid())
+  orderNumber     String      @unique
+  customerId      String
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  userId          Int?        // Admin qui a traité la commande
+  user            User?       @relation(fields: [userId], references: [id])
+  status          String      @default("PENDING") // PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  total           Float
+  shippingAddress String?
+  shippingCity    String?
+  shippingMethod  String?
+  paymentStatus   String      @default("PENDING") // PENDING, PAID, FAILED
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Relations
+  items           OrderItem[]
+}
+
+// Modèle OrderItem
 model OrderItem {
-  id        Int      @id @default(autoincrement())
-  orderId   Int
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
   productId Int
   product   Product  @relation(fields: [productId], references: [id])
-  
   quantity  Int
-  price     Decimal  @db.Decimal(10, 2)
-  
+  price     Float
   createdAt DateTime @default(now())
-  
-  @@index([orderId])
-  @@index([productId])
 }
 
+// Modèle Message (WhatsApp)
 model Message {
-  id          Int      @id @default(autoincrement())
-  phoneNumber String
-  message     String   @db.Text
-  messageType String
-  status      String
-  
-  // Security - store metadata safely
-  metadata    Json     @default("{}")
-  
-  createdAt   DateTime @default(now())
-  
-  @@index([phoneNumber])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model AuditLog {
-  id          Int      @id @default(autoincrement())
-  userId      Int?
-  action      String
-  entityType  String
-  entityId    String
-  
-  // Security audit
-  ipAddress   String?
-  userAgent   String?
-  metadata    Json     @default("{}")
-  
-  createdAt   DateTime @default(now())
-  
-  @@index([userId])
-  @@index([action])
-  @@index([entityType, entityId])
-  @@index([createdAt])
-}
-
-// Enums
-enum UserRole {
-  ADMIN
-  USER
-  MODERATOR
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
+  id              String    @id @default(uuid())
+  whatsappId      String    @unique
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  type            String    // TEXT, IMAGE, DOCUMENT, AUDIO, VIDEO
+  content         String?
+  mediaUrl        String?
+  status          String    @default("RECEIVED") // RECEIVED, READ, REPLIED
+  direction       String    // INBOUND, OUTBOUND
+  isFromCustomer  Boolean   @default(true)
+  metadata        String?   // JSON stocké comme string
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
