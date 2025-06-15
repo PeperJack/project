@@ -8,6 +8,8 @@ import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
 import orderRoutes from './routes/orders.js';
 import { authenticate, authorize } from './middleware/auth.js';
+import messageRoutes from './routes/messages.js';
+
 
 // Charger les variables d'environnement
 config();
@@ -16,9 +18,9 @@ config();
 const requiredEnvVars = [
   'DATABASE_URL',
   'JWT_SECRET',
-  'WHATSAPP_ACCESS_TOKEN',  // Changé de WHATSAPP_TOKEN
+  'WHATSAPP_ACCESS_TOKEN',
   'WHATSAPP_PHONE_NUMBER_ID',
-  'WHATSAPP_WEBHOOK_TOKEN',  // Changé de WHATSAPP_WEBHOOK_VERIFY_TOKEN
+  'WHATSAPP_WEBHOOK_TOKEN',
   'WHATSAPP_APP_SECRET'
 ];
 
@@ -117,6 +119,64 @@ app.use('/webhook', webhookRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/products', authenticate, productRoutes);
 app.use('/api/orders', authenticate, orderRoutes);
+app.use('/api/messages', authenticate, messageRoutes); // Ajouté ici
+
+// IMPORTANT: Route dashboard stats
+app.get('/api/dashboard/stats', authenticate, async (req, res) => {
+  try {
+    console.log('📊 Requête stats dashboard reçue');
+    
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    // Récupérer les statistiques
+    const [totalOrders, totalProducts, recentOrders] = await Promise.all([
+      prisma.order.count(),
+      prisma.product.count({ where: { isActive: true } }),
+      prisma.order.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          items: {
+            include: { product: true }
+          }
+        }
+      })
+    ]);
+
+    // Calculer le revenu total
+    const totalRevenue = await prisma.order.aggregate({
+      _sum: { total: true },
+      where: { status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'] } }
+    });
+
+    // Pour l'instant, on simule le nombre de messages
+    const totalMessages = 0;
+
+    const response = {
+      totalOrders,
+      totalRevenue: totalRevenue._sum.total || 0,
+      totalProducts,
+      totalMessages,
+      recentOrders: recentOrders.map(order => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        total: order.total,
+        status: order.status,
+        createdAt: order.createdAt,
+        itemCount: order.items.length
+      }))
+    };
+
+    console.log('✅ Stats calculées:', response);
+    res.json(response);
+
+    await prisma.$disconnect();
+  } catch (error) {
+    console.error('❌ Erreur stats:', error);
+    res.status(500).json({ error: 'Erreur lors de la récupération des statistiques' });
+  }
+});
 
 // Route de test
 app.get('/', (req, res) => {
@@ -139,6 +199,7 @@ app.get('/health', (req, res) => {
 
 // Gestion des erreurs 404
 app.use((req, res) => {
+  console.log(`❌ 404 - Route non trouvée: ${req.method} ${req.path}`);
   res.status(404).json({ error: 'Route non trouvée' });
 });
 
@@ -173,5 +234,11 @@ app.listen(PORT, () => {
 📱 WhatsApp Phone ID: ${process.env.WHATSAPP_PHONE_NUMBER_ID}
 🔐 JWT configuré: ✓
 📊 Base de données: ${process.env.DATABASE_URL ? '✓' : '✗'}
+
+📋 Routes disponibles:
+  - POST   /api/auth/login
+  - GET    /api/dashboard/stats (authentifié)
+  - GET    /api/products (authentifié)
+  - GET    /api/orders (authentifié)
   `);
 });
