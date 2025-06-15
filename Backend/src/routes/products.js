@@ -46,6 +46,7 @@ router.get('/', [
     if (req.query.search) {
       where.OR = [
         { name: { contains: req.query.search } },
+        { nameFr: { contains: req.query.search } },
         { description: { contains: req.query.search } }
       ];
     }
@@ -74,7 +75,11 @@ router.get('/', [
         select: {
           id: true,
           name: true,
+          nameFr: true,
+          nameAr: true,
           description: true,
+          descriptionFr: true,
+          descriptionAr: true,
           price: true,
           stock: true,
           category: true,
@@ -149,7 +154,27 @@ router.post('/', authorize(['ADMIN']), [
     .trim()
     .isLength({ min: 2, max: 200 })
     .escape(),
+  body('nameFr')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .escape(),
+  body('nameAr')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .escape(),
   body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .escape(),
+  body('descriptionFr')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .escape(),
+  body('descriptionAr')
     .optional()
     .trim()
     .isLength({ max: 2000 })
@@ -175,11 +200,32 @@ router.post('/', authorize(['ADMIN']), [
     const validationError = handleValidationErrors(req, res);
     if (validationError) return validationError;
 
-    const { name, description, price, stock, category, imageUrl } = req.body;
+    const { 
+      name, 
+      nameFr, 
+      nameAr,
+      description, 
+      descriptionFr,
+      descriptionAr,
+      price, 
+      stock, 
+      category, 
+      imageUrl 
+    } = req.body;
 
     // Vérifier l'unicité du nom
     const existingProduct = await prisma.product.findFirst({
-      where: { name: { equals: name } }
+      where: { 
+        AND: [
+          { isActive: true }, // Vérifier seulement les produits actifs
+          {
+            OR: [
+              { name: { equals: name } },
+              { nameFr: { equals: nameFr || name } }
+            ]
+          }
+        ]
+      }
     });
 
     if (existingProduct) {
@@ -189,11 +235,15 @@ router.post('/', authorize(['ADMIN']), [
     const product = await prisma.product.create({
       data: {
         name,
-        description,
+        nameFr: nameFr || name,
+        nameAr: nameAr || '',
+        description: description || '',
+        descriptionFr: descriptionFr || description || '',
+        descriptionAr: descriptionAr || '',
         price,
         stock,
-        category,
-        imageUrl,
+        category: category || null,
+        imageUrl: imageUrl || null,
         isActive: true
       }
     });
@@ -206,7 +256,7 @@ router.post('/', authorize(['ADMIN']), [
         entityType: 'PRODUCT',
         entityId: product.id.toString(),
         ipAddress: req.ip,
-        metadata: { productName: name }
+        metadata: JSON.stringify({ productName: name }) // Modifié ici
       }
     });
 
@@ -231,7 +281,27 @@ router.put('/:id', authorize(['ADMIN']), [
     .trim()
     .isLength({ min: 2, max: 200 })
     .escape(),
+  body('nameFr')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .escape(),
+  body('nameAr')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .escape(),
   body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .escape(),
+  body('descriptionFr')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .escape(),
+  body('descriptionAr')
     .optional()
     .trim()
     .isLength({ max: 2000 })
@@ -272,7 +342,11 @@ router.put('/:id', authorize(['ADMIN']), [
     // Préparer les données de mise à jour
     const updateData = {};
     if (req.body.name !== undefined) updateData.name = req.body.name;
+    if (req.body.nameFr !== undefined) updateData.nameFr = req.body.nameFr;
+    if (req.body.nameAr !== undefined) updateData.nameAr = req.body.nameAr;
     if (req.body.description !== undefined) updateData.description = req.body.description;
+    if (req.body.descriptionFr !== undefined) updateData.descriptionFr = req.body.descriptionFr;
+    if (req.body.descriptionAr !== undefined) updateData.descriptionAr = req.body.descriptionAr;
     if (req.body.price !== undefined) updateData.price = req.body.price;
     if (req.body.stock !== undefined) updateData.stock = req.body.stock;
     if (req.body.category !== undefined) updateData.category = req.body.category;
@@ -291,9 +365,9 @@ router.put('/:id', authorize(['ADMIN']), [
         entityType: 'PRODUCT',
         entityId: product.id.toString(),
         ipAddress: req.ip,
-        metadata: {
+        metadata: JSON.stringify({
           changes: Object.keys(updateData)
-        }
+        })
       }
     });
 
@@ -362,9 +436,7 @@ router.delete('/:id', authorize(['ADMIN']), [
         entityType: 'PRODUCT',
         entityId: productId.toString(),
         ipAddress: req.ip,
-        metadata: {
-          productName: product.name
-        }
+        metadata: JSON.stringify({ productName: product.name }) // Modifié ici
       }
     });
 
